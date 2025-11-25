@@ -1,0 +1,591 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(circle at top, #111727 0%, #05060a 55%);
+  color: #f5f7ff;
+  font-family: 'SF Pro Display', 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(5, 6, 10, 0.85);
+  backdrop-filter: blur(16px);
+}
+
+.project-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-name {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.project-branch {
+  font-size: 13px;
+  color: rgba(245, 247, 255, 0.65);
+}
+
+.top-bar-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.user-chip p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.user-chip span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.user-chip button {
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f7ff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.top-bar button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.4em;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.top-bar button.primary {
+  background: #7f5af0;
+  color: #fff;
+}
+
+.top-bar button.primary:hover {
+  background: #6c3fee;
+}
+
+.top-bar button.ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #f5f7ff;
+}
+
+.ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f5f7ff;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 0.4em 0.9em;
+}
+
+.top-bar button.ghost:hover {
+  border-color: #7f5af0;
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.side-panel {
+  width: 280px;
+  padding: 24px;
+  background: rgba(7, 9, 15, 0.95);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.account-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(12, 14, 22, 0.95);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-card strong {
+  font-size: 16px;
+}
+
+.account-card span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.account-meta {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-meta li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.panel-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 4px;
+}
+
+.runtime-list,
+.file-tree {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.runtime-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(16, 18, 29, 0.85);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.runtime-item:hover {
+  border-color: rgba(127, 90, 240, 0.5);
+}
+
+.runtime-item input {
+  accent-color: #7f5af0;
+}
+
+.runtime-item p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.runtime-item span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.runtime-item code {
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.file-tree .file {
+  width: 100%;
+  border: none;
+  background: rgba(16, 18, 29, 0.85);
+  padding: 12px;
+  border-radius: 10px;
+  color: inherit;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-align: left;
+}
+
+.file-tree .file:hover,
+.file-tree .file.active {
+  border-color: rgba(127, 90, 240, 0.5);
+}
+
+.file-tree .file p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.file-tree .file span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.lang-chip {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(127, 90, 240, 0.15);
+  border: 1px solid rgba(127, 90, 240, 0.4);
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  gap: 16px;
+  min-width: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  border: 1px solid transparent;
+  background: rgba(15, 16, 27, 0.85);
+  color: #f5f7ff;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tab.active {
+  border-color: rgba(127, 90, 240, 0.7);
+  background: rgba(127, 90, 240, 0.14);
+}
+
+.readonly-indicator {
+  margin-left: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.editor-surface {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0b0d14;
+}
+
+.empty-state {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.bottom-panels {
+  display: grid;
+  grid-template-columns: 3fr 1.5fr;
+  gap: 16px;
+}
+
+.panel {
+  background: rgba(7, 9, 15, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel header p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.panel header span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.panel header button {
+  border-radius: 8px;
+  border: 1px solid rgba(127, 90, 240, 0.5);
+  background: transparent;
+  color: #f5f7ff;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.console-log {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.console-log li {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.console-log li.info {
+  border-left: 3px solid #3a86ff;
+}
+
+.console-log li.success {
+  border-left: 3px solid #2ec4b6;
+}
+
+.console-log li.error {
+  border-left: 3px solid #ef476f;
+}
+
+.console-log .timestamp {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  width: 70px;
+}
+
+.console-log .message {
+  flex: 1;
+}
+
+.test-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.test-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 16, 27, 0.9);
+}
+
+.test-list li p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.test-list li span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.status-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.test-list li.passed .status-pill {
+  background: rgba(46, 196, 182, 0.15);
+  color: #2ec4b6;
+}
+
+.test-list li.failed .status-pill {
+  background: rgba(239, 71, 111, 0.15);
+  color: #ef476f;
+}
+
+.test-list li.pending .status-pill {
+  background: rgba(58, 134, 255, 0.15);
+  color: #3a86ff;
+}
+
+.screen {
+  min-height: 100vh;
+  background: radial-gradient(circle at 10% 20%, rgba(127, 90, 240, 0.25), transparent 45%),
+    #05060a;
+  padding: clamp(32px, 8vw, 96px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-screen,
+.dashboard-screen {
+  width: min(640px, 100%);
+  background: rgba(7, 9, 15, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
+  padding: clamp(24px, 4vw, 48px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  color: #f5f7ff;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-card h1,
+.dashboard-screen h1 {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 40px);
+}
+
+.subtitle {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.6;
+}
+
+.auth-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.auth-card input {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 12px 14px;
+  color: #fff;
+}
+
+.auth-card button {
+  border: none;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.auth-card button[type='submit'] {
+  background: linear-gradient(135deg, #7f5af0, #9251f7);
+  color: #fff;
+}
+
+.verify-form .verify-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.verify-info {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.auth-error {
+  color: #ff7b7b;
+  font-size: 13px;
+}
+
+.dashboard-screen .stats {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dashboard-screen .stats li {
+  flex: 1;
+  min-width: 120px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.dashboard-screen .stats span {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.dashboard-screen .stats strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 20px;
+}
+
+.dashboard-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+@media (max-width: 1200px) {
+  .app-body {
+    flex-direction: column;
+  }
+
+  .side-panel {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .bottom-panels {
+    grid-template-columns: 1fr;
+  }
+}

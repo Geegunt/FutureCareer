@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vibecode-jam-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vibecode_jam
+      POSTGRES_PASSWORD: vibecode_jam
+      POSTGRES_DB: vibecode_jam
+    ports:
+      - "5432:5432"
+    volumes:
+      - vibecode_jam_pg_data:/var/lib/postgresql/data
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: vibecode-jam-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  vibecode_jam_pg_data:
+
