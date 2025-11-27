@@ -30,8 +30,6 @@ async def main():
         except Exception as e:
             print(f'❌ Ошибка: {e}')
             await session.rollback()
-        finally:
-            break
 
 
 if __name__ == '__main__':

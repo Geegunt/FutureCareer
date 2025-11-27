@@ -10,6 +10,7 @@ sys.path.insert(0, str(backend_root))
 
 from app.database import async_session_factory, engine
 from app.models import Base, Question, Vacancy
+from scripts.init_data import create_admin_user, create_default_moderator
 async def reset_schema() -> None:
     """Drop and recreate every table to keep the DB in sync without Alembic."""
     async with engine.begin() as conn:
@@ -144,6 +145,10 @@ async def main():
     await reset_schema()
     print('--- Старт сидирования ---')
     await seed_vacancies()
+    print('--- Создаем админа ---')
+    await create_admin_user()
+    print('--- Создаем модератора ---')
+    await create_default_moderator()
 
 
 if __name__ == '__main__':
