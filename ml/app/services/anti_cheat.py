@@ -2,7 +2,7 @@ from app.core.config import settings
 from app.services.llm_client import llm_client
 
 class AntiCheatService:
-    """Сервис проверки кода на плагиат и AI-генерацию."""
+    """Сервис проверки кода на плагиат."""
     
     async def check_submission(self, code: str, problem_desc: str) -> dict:
         """Проверяет код на признаки нечестного решения.
@@ -12,7 +12,7 @@ class AntiCheatService:
             problem_desc: Описание задачи
             
         Returns:
-            dict: Результат проверки (is_suspicious, confidence, reason)
+            dict: Результат проверки
         """
         prompt = f"""
         Проанализируй следующий код на признаки нечестного решения, плагиата или чистой AI-генерации без понимания.

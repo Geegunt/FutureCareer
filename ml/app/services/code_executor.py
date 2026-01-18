@@ -5,10 +5,7 @@ import traceback
 from typing import List, Tuple, Any
 
 class CodeExecutor:
-    """Исполнитель кода Python в песочнице.
-    
-    ВНИМАНИЕ: Использует exec() - небезопасно! В production используйте Docker.
-    """
+    """Исполнитель кода Python в песочнице."""
     
     def execute(self, code: str, inputs: List[str]) -> List[dict]:
         """Выполняет код на списке входных данных.
@@ -19,14 +16,11 @@ class CodeExecutor:
             
         Returns:
             List[dict]: Результаты выполнения для каждого теста
-        
-        Предполагается, что код читает из stdin и выводит в stdout.
         """
         passed_count = 0
         results = []
         
         for i, inp in enumerate(inputs):
-            # Захватываем stdout и stderr
             stdout_capture = io.StringIO()
             stderr_capture = io.StringIO()
             
@@ -35,17 +29,25 @@ class CodeExecutor:
             error = ""
             
             try:
-                # Подготавливаем входные данные
                 stdin_capture = io.StringIO(inp)
                 
-                # Выполняем в отдельном контексте для захвата I/O
+                input_lines = inp.split('\n') if inp else []
+                input_index = [0]
+                
+                def custom_input(prompt=''):
+                    if input_index[0] < len(input_lines):
+                        line = input_lines[input_index[0]]
+                        input_index[0] += 1
+                        return line
+                    return ''
+                
                 with contextlib.redirect_stdout(stdout_capture), \
-                     contextlib.redirect_stderr(stderr_capture), \
-                     contextlib.redirect_stdin(stdin_capture):
+                     contextlib.redirect_stderr(stderr_capture):
                     
-                    # ОПАСНО: exec() небезопасен. В production используйте Docker.
-                    # Оборачиваем в try/except блок.
-                    exec_globals = {}
+                    exec_globals = {
+                        '__builtins__': __builtins__,
+                        'input': custom_input,
+                    }
                     try:
                         exec(code, exec_globals)
                         success = True
@@ -55,13 +57,13 @@ class CodeExecutor:
                 
                 output = stdout_capture.getvalue().strip()
                 if not success:
-                    # Ошибка выполнения
-                    pass
-                
-                # Примечание: У нас нет "ожидаемых выходных данных" для скрытых тестов.
-                # TaskGenerator генерирует только входные данные.
-                # Поэтому мы полагаемся на LLM для проверки корректности выходных данных.
-                # Собираем выходные данные и передаём Evaluator LLM для анализа.
+                    print(f"❌ CodeExecutor: Test {i+1} failed")
+                    print(f"   Input: {inp[:50]}...")
+                    print(f"   Error: {error}")
+                else:
+                    print(f"✅ CodeExecutor: Test {i+1} passed")
+                    print(f"   Input: {inp[:50]}...")
+                    print(f"   Output: {output[:50]}...")
                 
                 results.append({
                     "input": inp,

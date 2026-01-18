@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class TestCase(BaseModel):
     """Тестовый случай"""
     input: str = Field(..., description='Входные данные')
-    output: str = Field(..., description='Ожидаемый вывод')
+    output: str = Field(default='', description='Ожидаемый вывод')
 
 
 class TaskBase(BaseModel):

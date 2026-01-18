@@ -1,24 +1,84 @@
 import { useEffect, useState } from 'react'
+import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchDashboard, fetchProfile } from '../modules/auth/api'
 import type { DashboardSnapshot, UserProfile } from '../modules/auth/types'
 import { fetchMyAnswers, fetchQuestions, submitAnswer } from '../modules/questions/api'
 import type { Question } from '../modules/questions/types'
+import { getMyApplications } from '../modules/vacancies/api'
+import type { Application } from '../modules/vacancies/types'
 import '../App.css'
 import './DashboardPage.css'
 
 const TOKEN_STORAGE_KEY = 'vibecode_token'
 
+const getStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    pending: 'На рассмотрении',
+    survey_completed: 'Опрос пройден',
+    algo_test_completed: 'Задачи решены',
+    under_review: 'На модерации',
+    accepted: 'Принято 🎉',
+    rejected: 'Отклонено',
+    final_verdict: 'Финальный вердикт'
+  }
+  return statusMap[status] || status
+}
+
+const getElapsedTime = (startTime: string) => {
+  const start = new Date(startTime)
+  const now = new Date()
+  const diff = Math.floor((now.getTime() - start.getTime()) / 60000) // минуты
+  return `${diff}`
+}
+
+const getTimeDisplay = (app: Application) => {
+  if (!app.started_at) return null
+  
+  const start = new Date(app.started_at)
+  const now = new Date()
+  const elapsed = Math.floor((now.getTime() - start.getTime()) / 60000)
+  const remaining = app.time_limit_minutes - elapsed
+  
+  if (app.completed_at) {
+    const completed = new Date(app.completed_at)
+    const totalElapsed = Math.floor((completed.getTime() - start.getTime()) / 60000)
+    return {
+      text: `${totalElapsed} минут`,
+      className: 'time-normal'
+    }
+  }
+  
+  if (remaining <= 10) {
+    return {
+      text: `${elapsed} / ${app.time_limit_minutes} мин (осталось ${remaining})`,
+      className: 'time-warning'
+    }
+  }
+  
+  return {
+    text: `${elapsed} / ${app.time_limit_minutes} минут`,
+    className: 'time-normal'
+  }
+}
+
 export function DashboardPage() {
   const navigate = useNavigate()
   const [user, setUser] = useState<UserProfile | null>(null)
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null)
+  const [applications, setApplications] = useState<Application[]>([])
+  const [applicationsLoading, setApplicationsLoading] = useState(true)
   const [showSurvey, setShowSurvey] = useState(false)
   const [questions, setQuestions] = useState<Question[]>([])
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [surveyCompleted, setSurveyCompleted] = useState(false)
   const [surveyLoading, setSurveyLoading] = useState(false)
+
+  const handleLogout = () => {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY)
+    navigate('/')
+  }
 
   useEffect(() => {
     const token = window.localStorage.getItem(TOKEN_STORAGE_KEY)
@@ -27,6 +87,13 @@ export function DashboardPage() {
       return
     }
     void loadData(token)
+    
+    // Обновляем таймеры каждые 30 секунд для активных собеседований
+    const interval = setInterval(() => {
+      void loadApplications(token)
+    }, 30000)
+    
+    return () => clearInterval(interval)
   }, [navigate])
 
   const loadData = async (token: string) => {
@@ -42,6 +109,19 @@ export function DashboardPage() {
       handleLogout()
     }
     void loadQuestionsAndAnswers(token)
+    void loadApplications(token)
+  }
+
+  const loadApplications = async (token: string) => {
+    try {
+      setApplicationsLoading(true)
+      const apps = await getMyApplications(token)
+      setApplications(apps)
+    } catch (error) {
+      console.error('Failed to load applications:', error)
+    } finally {
+      setApplicationsLoading(false)
+    }
   }
 
   const loadQuestionsAndAnswers = async (token: string) => {
@@ -81,11 +161,6 @@ export function DashboardPage() {
     }
   }
 
-  const handleLogout = () => {
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY)
-    navigate('/')
-  }
-
   if (!user) {
     return <div>Загрузка...</div>
   }
@@ -116,6 +191,66 @@ export function DashboardPage() {
                 <strong>{dashboard.last_language}</strong>
               </li>
             </ul>
+          )}
+        </div>
+
+        {/* История собеседований */}
+        <div className="applications-section">
+          <h2>📋 Мои собеседования</h2>
+          {applicationsLoading ? (
+            <div className="loading-state">Загрузка истории...</div>
+          ) : applications.length === 0 ? (
+            <div className="empty-state">
+              <p>У вас пока нет пройденных собеседований</p>
+              <button 
+                type="button" 
+                className="primary" 
+                onClick={() => navigate('/vacancies')}
+              >
+                Выбрать вакансию
+              </button>
+            </div>
+          ) : (
+            <div className="applications-list">
+              {applications.map((app: Application) => (
+                <div key={app.id} className="application-card">
+                  <div className="application-header">
+                    <h3>{app.vacancy?.title || 'Неизвестная вакансия'}</h3>
+                    <span className={`status-badge status-${app.status}`}>
+                      {getStatusText(app.status)}
+                    </span>
+                  </div>
+                  <div className="application-details">
+                    <p><strong>Позиция:</strong> {app.vacancy?.position}</p>
+                    <p><strong>Язык:</strong> {app.vacancy?.language}</p>
+                    <p><strong>Грейд:</strong> {app.vacancy?.grade}</p>
+                    {app.ml_score !== null && (
+                      <p><strong>Оценка ML:</strong> {app.ml_score.toFixed(1)}/100</p>
+                    )}
+                    <p><strong>Подано:</strong> {new Date(app.created_at).toLocaleDateString('ru-RU')}</p>
+                    <p><strong>Обновлено:</strong> {new Date(app.updated_at).toLocaleDateString('ru-RU')}</p>
+                    {app.started_at && (
+                      <p><strong>Начато:</strong> {new Date(app.started_at).toLocaleString('ru-RU')}</p>
+                    )}
+                    {app.completed_at && (
+                      <p><strong>Завершено:</strong> {new Date(app.completed_at).toLocaleString('ru-RU')}</p>
+                    )}
+                    {getTimeDisplay(app) && (
+                      <p><strong>Длительность:</strong> <span className={getTimeDisplay(app)!.className}>{getTimeDisplay(app)!.text}</span></p>
+                    )}
+                  </div>
+                  <div className="application-actions">
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => navigate(`/ide?vacancy_id=${app.vacancy_id}`)}
+                    >
+                      Посмотреть результаты
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
@@ -175,7 +310,7 @@ export function DashboardPage() {
                         <span className="label-text">Ваш ответ</span>
                         <textarea
                           value={answers[questions[currentQuestionIndex].id] || ''}
-                          onChange={(e) =>
+                          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                             setAnswers({
                               ...answers,
                               [questions[currentQuestionIndex].id]: e.target.value,

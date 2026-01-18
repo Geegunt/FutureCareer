@@ -55,6 +55,9 @@ class Application(Base):
     )
     ml_score: Mapped[float | None] = mapped_column(default=None)  # Оценка от ML сервиса
     status: Mapped[str] = mapped_column(String(20), default='pending')  # pending, completed, failed
+    started_at: Mapped[datetime | None] = mapped_column(default=None)  # Время начала собеседования
+    completed_at: Mapped[datetime | None] = mapped_column(default=None)  # Время завершения собеседования
+    time_limit_minutes: Mapped[int] = mapped_column(default=120)  # Лимит времени в минутах
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

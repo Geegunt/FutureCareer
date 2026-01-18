@@ -64,6 +64,7 @@ services:
       BACKEND_URL: http://backend:8000/api
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - executor_tmp:/app/tmp
     depends_on:
       - postgres
     ports:
@@ -73,6 +74,8 @@ services:
     build:
       context: ./ml
     container_name: vibecode-jam-ml
+    env_file:
+      - ./ml/.env
     environment:
       PORT: 8002
     command: uvicorn app.main:app --host 0.0.0.0 --port 8002
@@ -92,4 +95,5 @@ services:
 
 volumes:
   postgres_data:
+  executor_tmp:
 

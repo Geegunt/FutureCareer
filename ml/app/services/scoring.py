@@ -1,5 +1,5 @@
 class ScoringService:
-    """Сервис расчёта итогового балла на основе всех метрик."""
+    """Сервис расчёта итогового балла."""
     
     def calculate_final_score(
         self,
@@ -29,12 +29,10 @@ class ScoringService:
         if hints_used is None:
             hints_used = []
         
-        # Нормализуем метрики к шкале 0-1
         correctness = tests_passed / total_tests if total_tests > 0 else 0.0
         code_quality = code_quality_score / 100.0
         communication = communication_score / 100.0
         
-        # Временные лимиты по сложности (в секундах)
         time_limits = {
             "easy": 300,    # 5 минут
             "medium": 600,  # 10 минут
@@ -42,10 +40,8 @@ class ScoringService:
         }
         
         time_limit = time_limits.get(difficulty, 600)
-        # Чем быстрее, тем лучше (но не штрафуем за медленность сильно)
         time_score = max(0.0, 1.0 - (time_taken_seconds / time_limit) * 0.5)
         
-        # Бонус за сложность
         difficulty_multiplier = {
             "easy": 1.0,
             "medium": 1.2,
@@ -53,18 +49,15 @@ class ScoringService:
         }
         multiplier = difficulty_multiplier.get(difficulty, 1.0)
         
-        # Итоговая формула
         score = (
             0.40 * correctness +      # 40% - корректность
             0.20 * code_quality +     # 20% - качество кода
             0.20 * communication +    # 20% - коммуникация
-            0.20 * time_score         # 20% - время
+            0.20 * time_score
         )
         
-        # Применяем множитель сложности и конвертируем в 0-100
         final_score = score * multiplier * 100.0
         
-        # Вычитаем штрафы за подсказки
         hint_penalties = {
             "surface": 5.0,   # -5 баллов
             "medium": 15.0,   # -15 баллов
@@ -74,6 +67,6 @@ class ScoringService:
         total_hint_penalty = sum(hint_penalties.get(hint, 0.0) for hint in hints_used)
         final_score -= total_hint_penalty
         
-        return max(0.0, min(100.0, final_score))  # Ограничиваем 0-100
+        return max(0.0, min(100.0, final_score))
 
 scoring_service = ScoringService()

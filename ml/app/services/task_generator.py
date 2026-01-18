@@ -24,7 +24,6 @@ class TaskGenerator:
         if preferred_language not in supported_languages:
             preferred_language = 'python'
         
-        # 1. Генерируем описание задачи с помощью AWQ модели
         prompt = self._get_generation_prompt(difficulty)
         
         task_data = await llm_client.generate_json(
@@ -36,7 +35,6 @@ class TaskGenerator:
             temperature=0.8
         )
         
-        # 2. Генерируем тесты, чтобы получить 3 открытых и 15 закрытых вариантов
         hidden_test_inputs = await self._generate_hidden_tests(task_data) or []
         
         # Гарантируем, что тестов не менее 18 штук (3 открытых + 15 закрытых)
@@ -44,7 +42,6 @@ class TaskGenerator:
             hidden_test_inputs.extend(hidden_test_inputs or ["1\n1"])
         hidden_test_inputs = hidden_test_inputs[:18]
         
-        # 3. Генерируем эталонное решение
         canonical_solutions: dict[str, str] = {}
         python_solution = await self._generate_canonical_solution(task_data, difficulty, language='python')
         if python_solution:
@@ -64,9 +61,9 @@ class TaskGenerator:
         task_data["canonical_solution"] = canonical_for_storage or None
         task_data["canonical_solutions"] = canonical_solutions or None
         
-        # 4. Генерируем outputs для тестов с помощью эталонного решения, если оно есть
         test_cases: list[dict[str, str]] = []
         if python_solution:
+            print(f"🔧 Executing canonical solution to generate test outputs...")
             executor_results = code_executor.execute(python_solution, hidden_test_inputs)
             if executor_results and len(executor_results) == len(hidden_test_inputs):
                 all_success = all(res.get("success") for res in executor_results)
@@ -75,33 +72,39 @@ class TaskGenerator:
                         {"input": res["input"], "output": res.get("output", "")}
                         for res in executor_results
                     ]
+                    print(f"✅ Generated {len(test_cases)} test outputs from canonical solution")
+                else:
+                    print(f"❌ Canonical solution failed on some tests")
+                    for idx, res in enumerate(executor_results):
+                        if not res.get("success"):
+                            print(f"   Test {idx+1} failed: {res.get('error', 'Unknown error')[:100]}")
         
-        # 5. Если выполнение эталонного решения не удалось, используем LLM для генерации outputs
         if not test_cases or len(test_cases) < len(hidden_test_inputs):
+            print(f"⚠️  Canonical solution didn't generate all outputs, using LLM fallback...")
             hidden_tests_with_outputs = await self._generate_hidden_test_outputs(task_data, hidden_test_inputs)
             test_cases = hidden_tests_with_outputs or []
+            
+            valid_test_cases = [tc for tc in test_cases if tc.get("output", "").strip()]
+            if len(valid_test_cases) < len(test_cases):
+                print(f"⚠️  LLM generated {len(test_cases) - len(valid_test_cases)} tests with empty outputs")
         
-        # Фоллбек: если всё равно не получили outputs, создаём пустые пары
         if not test_cases:
+            print(f"❌ No valid test outputs generated, using empty outputs as fallback")
             test_cases = [{"input": inp, "output": ""} for inp in hidden_test_inputs]
         
-        # Нормализуем длину массива тестов
         while len(test_cases) < 18:
             base = test_cases[len(test_cases) % len(test_cases)]
             test_cases.append({"input": base["input"], "output": base["output"]})
         test_cases = test_cases[:18]
         
-        # Разбиваем на 3 открытых и 15 закрытых тестов
         open_test_cases = [dict(input=case["input"], output=case["output"]) for case in test_cases[:3]]
         hidden_test_cases = [dict(input=case["input"], output=case["output"]) for case in test_cases[3:18]]
         
-        # Сохраняем открытые тесты как examples, закрытые как hidden_tests(+inputs)
         task_data["examples"] = open_test_cases
         task_data["hidden_tests_full"] = hidden_test_cases
         task_data["hidden_tests"] = [case["input"] for case in hidden_test_cases]
         task_data["difficulty"] = difficulty
         
-        # 5. Генерируем подсказки для задачи
         hints = await hint_service.generate_hints(
             task_description=task_data.get("description", ""),
             task_difficulty=difficulty,
@@ -114,25 +117,37 @@ class TaskGenerator:
         return Task(**task_data)
 
     async def _generate_hidden_tests(self, task_data: dict) -> list[str]:
-        """Генерирует скрытые тесты для задачи (только inputs).
+        """Генерирует скрытые тесты для задачи.
         
         Args:
-            task_data: Данные задачи (title, description, input_format)
+            task_data: Данные задачи
             
         Returns:
             list[str]: Список входных данных для тестов
         """
         prompt = f"""
-        Для следующей алгоритмической задачи сгенерируй 18 разнообразных тестовых входных данных, которые покрывают базовые, граничные и стрессовые случаи.
-        Первые 3 теста должны быть относительно простыми (они станут открытыми), остальные 15 — более сложными (закрытые).
+        Для следующей алгоритмической задачи сгенерируй 18 УНИКАЛЬНЫХ тестовых входных данных.
+        Тесты должны быть разнообразными и покрывать разные сценарии:
+        - Базовые случаи (обычные данные)
+        - Граничные случаи (минимальные/максимальные значения, пустые структуры, одиночные элементы)
+        - Отрицательные числа, нули (если применимо)
+        - Повторяющиеся элементы
+        - Большие значения (стресс-тесты)
+        
+        Первые 3 теста должны быть простыми и понятными (для примеров).
+        Остальные 15 тестов должны быть сложнее и проверять устойчивость алгоритма.
         
         Название задачи: {task_data.get('title')}
         Описание: {task_data.get('description')}
         Формат входных данных: {task_data.get('input_format')}
         
-        Верни ТОЛЬКО JSON массив строк, где каждая строка - это входные данные для программы.
+        Верни ТОЛЬКО JSON массив строк. Каждая строка - это сырые входные данные, готовые к подаче в stdin.
         Пример формата: ["1 2 3", "100", "-5 0 5"]
-        Количество элементов массива должно быть РОВНО 18.
+        
+        ВАЖНО:
+        1. Верни РОВНО 18 тестов.
+        2. Тесты НЕ должны повторяться.
+        3. НЕ пиши ничего кроме JSON массива.
         """
         
         try:
@@ -163,14 +178,14 @@ class TaskGenerator:
             return []
     
     async def _generate_hidden_test_outputs(self, task_data: dict, hidden_test_inputs: list[str]) -> list[dict]:
-        """Генерирует outputs для скрытых тестов на основе описания задачи и примеров.
+        """Генерирует outputs для скрытых тестов.
         
         Args:
-            task_data: Данные задачи (title, description, examples, input_format, output_format)
+            task_data: Данные задачи
             hidden_test_inputs: Список входных данных для скрытых тестов
             
         Returns:
-            list[dict]: Список тестов с input и output в формате [{"input": "...", "output": "..."}, ...]
+            list[dict]: Список тестов с input и output
         """
         examples_text = "\n".join([
             f"Вход: {ex.get('input', '')}\nВыход: {ex.get('output', '')}"
@@ -194,7 +209,11 @@ class TaskGenerator:
         Верни ТОЛЬКО JSON массив объектов в формате:
         [{{"input": "входные данные", "output": "выходные данные"}}, ...]
         
-        ВАЖНО: Все выходные данные должны быть правильными согласно описанию задачи и примерам.
+        КРИТИЧЕСКИ ВАЖНО:
+        1. Все выходные данные должны быть правильными согласно описанию задачи и примерам
+        2. Поле "output" НЕ ДОЛЖНО быть пустым - всегда вычисляй правильный результат
+        3. Формат output должен точно соответствовать формату в примерах
+        4. Количество тестов в ответе должно совпадать с количеством входных тестов
         """
         
         try:
@@ -207,23 +226,38 @@ class TaskGenerator:
                 temperature=0.3  # Низкая температура для более точных результатов
             )
             
+            print(f"🔍 LLM returned type: {type(results)}")
+            print(f"🔍 LLM returned value (first 500 chars): {str(results)[:500]}")
+            
+            tests_array = results
+            if isinstance(results, dict):
+                # Если LLM вернул словарь с ключом 'tests', извлекаем массив
+                if 'tests' in results:
+                    tests_array = results['tests']
+                    print(f"✅ Extracted tests array from 'tests' key")
+                else:
+                    print(f"❌ Dict doesn't have 'tests' key, keys: {list(results.keys())}")
+                    return [{"input": inp, "output": ""} for inp in hidden_test_inputs]
+            
             paired_results: list[dict] = []
-            if isinstance(results, list):
+            if isinstance(tests_array, list):
+                print(f"✅ Tests array has {len(tests_array)} items")
                 for idx, inp in enumerate(hidden_test_inputs):
-                    candidate = results[idx] if idx < len(results) else None
+                    candidate = tests_array[idx] if idx < len(tests_array) else None
                     if isinstance(candidate, dict) and "output" in candidate:
                         paired_results.append({"input": inp, "output": str(candidate["output"])})
                     elif isinstance(candidate, str):
                         paired_results.append({"input": inp, "output": candidate})
                     else:
+                        print(f"⚠️  Test {idx+1}: candidate type={type(candidate)}, value={candidate}")
                         paired_results.append({"input": inp, "output": ""})
+                print(f"✅ Generated {len(paired_results)} test outputs")
                 return paired_results
             
-            # Если результат не список, возвращаем заглушки
+            print(f"❌ Tests array is not a list, returning empty outputs")
             return [{"input": inp, "output": ""} for inp in hidden_test_inputs]
         except Exception as e:
             print(f"Ошибка при генерации outputs для скрытых тестов: {e}")
-            # Fallback: возвращаем тесты с пустыми outputs
             return [{"input": inp, "output": ""} for inp in hidden_test_inputs]
     
     async def _generate_canonical_solution(
@@ -233,7 +267,17 @@ class TaskGenerator:
         language: str = 'python',
         reference_solution: str | None = None,
     ) -> str:
-        """Генерирует эталонное решение на указанном языке."""
+        """Генерирует эталонное решение.
+        
+        Args:
+            task_data: Данные задачи
+            difficulty: Уровень сложности
+            language: Язык программирования
+            reference_solution: Референсное решение
+            
+        Returns:
+            str: Эталонное решение
+        """
         language_names = {
             'python': 'Python',
             'go': 'Go',
@@ -255,6 +299,11 @@ class TaskGenerator:
 ```
 Напиши эквивалент на {language_names.get(language, language.title())}, соблюдая стиль и требования языка.
 """
+        examples_formatted = []
+        for ex in task_data.get('examples', []):
+            examples_formatted.append(f"Вход:\n{ex.get('input', '')}\nВыход:\n{ex.get('output', '')}")
+        examples_text = "\n\n".join(examples_formatted)
+        
         prompt = f"""
 Ты опытный инженер по алгоритмам. Напиши оптимальное решение задачи НА {language_names.get(language, language.title()).upper()}.
         
@@ -263,13 +312,16 @@ class TaskGenerator:
         Формат входных данных: {task_data.get('input_format')}
         Формат выходных данных: {task_data.get('output_format')}
         Ограничения: {task_data.get('constraints')}
-        Примеры: {json.dumps(task_data.get('examples', []), ensure_ascii=False)}
+        
+        Примеры:
+        {examples_text}
         
         Требования:
-- Решение должно читать данные из стандартного ввода и выводить результат в стандартный вывод.
-- Используй только стандартную библиотеку языка.
-        - Решение должно быть оптимальным по времени и памяти для уровня сложности {difficulty}.
-- Не добавляй комментарии, объяснения и Markdown. Верни ТОЛЬКО чистый код.
+- Решение должно читать данные ТОЧНО в том формате, который указан в "Формат входных данных" и примерах
+- Решение должно выводить результат ТОЧНО в том формате, который указан в "Формат выходных данных" и примерах
+- Используй только стандартную библиотеку языка
+- Решение должно быть оптимальным по времени и памяти для уровня сложности {difficulty}
+- Не добавляй комментарии, объяснения и Markdown. Верни ТОЛЬКО чистый код
 {io_guidance.get(language, '')}
 {reference_block}
         """
@@ -289,10 +341,16 @@ class TaskGenerator:
             return ""
     
     def _extract_code_block(self, content: str) -> str:
-        """Извлекает код из ответа модели, удаляя маркдауны."""
+        """Извлекает код из ответа модели.
+        
+        Args:
+            content: Контент от модели
+            
+        Returns:
+            str: Извлеченный код
+        """
         if "```" in content:
             parts = content.split("```")
-            # Обычно код внутри первого блока после троекратных кавычек
             if len(parts) >= 2:
                 candidate = parts[1]
                 # Удаляем возможное указание языка в первой строке

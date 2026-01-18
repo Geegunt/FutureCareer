@@ -2,17 +2,7 @@ from typing import Literal
 from app.models.schemas import AdaptiveLevelRequest, AdaptiveLevelResponse
 
 class AdaptiveDifficultyEngine:
-    """Адаптивный движок для определения следующего уровня сложности.
-    
-    Логика переходов:
-    - Старт: всегда Medium
-    - Medium пройден → Hard (если мало ошибок) или Medium (если 2+ плохих попыток)
-    - Medium провален → Easy
-    - Easy пройден → Medium
-    - Easy провален → Easy
-    - Hard пройден → Hard
-    - Hard провален → Medium
-    """
+    """Адаптивный движок для определения следующего уровня сложности."""
     
     def determine_next_level(self, request: AdaptiveLevelRequest) -> AdaptiveLevelResponse:
         """Определяет следующий уровень сложности на основе результатов.
@@ -27,7 +17,7 @@ class AdaptiveDifficultyEngine:
         passed = request.is_passed
         bad_attempts = request.bad_attempts
         
-        next_level = current  # По умолчанию оставляем текущий уровень
+        next_level = current
         reason = "Уровень сохранён."
 
         if current == "medium":

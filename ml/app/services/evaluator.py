@@ -4,7 +4,7 @@ from app.services.llm_client import llm_client
 from app.models.schemas import EvaluationRequest, EvaluationResult
 
 class Evaluator:
-    """Оценщик кода: запускает тесты и анализирует качество с помощью LLM."""
+    """Оценщик кода."""
     
     async def evaluate_submission(self, request: EvaluationRequest) -> EvaluationResult:
         """Оценивает решение кандидата.
@@ -15,11 +15,7 @@ class Evaluator:
         Returns:
             EvaluationResult: Результат оценки с метриками и обратной связью
         """
-        # 1. Выполняем код на скрытых тестах
         execution_results = code_executor.execute(request.code, request.hidden_tests)
-        
-        # 2. Анализируем с помощью LLM (Coder модель)
-        # Отправляем задачу, код и результаты выполнения в LLM
         
         prompt = self._build_evaluation_prompt(request, execution_results)
         

@@ -1,2 +1,165 @@
 /* Dashboard Page Styles - используем существующие стили из App.css */
 
+.applications-section {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  border: 1px solid #e9ecef;
+}
+
+.applications-section h2 {
+  margin: 0 0 20px 0;
+  color: #2c3e50;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.applications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.application-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid #dee2e6;
+  transition: box-shadow 0.2s ease;
+}
+
+.application-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.application-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.application-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-survey_completed {
+  background: #cce5ff;
+  color: #004085;
+}
+
+.status-algo_test_completed {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-under_review {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.status-accepted {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+.status-rejected {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.status-final_verdict {
+  background: #e2e3e5;
+  color: #383d41;
+}
+
+.application-details {
+  margin-bottom: 16px;
+}
+
+.application-details p {
+  margin: 4px 0;
+  color: #495057;
+  font-size: 0.9rem;
+}
+
+.application-details strong {
+  color: #2c3e50;
+}
+
+.time-warning {
+  color: #dc3545;
+  font-weight: 600;
+}
+
+.time-normal {
+  color: #28a745;
+}
+
+.application-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6c757d;
+}
+
+.empty-state p {
+  margin: 0 0 16px 0;
+  font-size: 1.1rem;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 20px;
+  color: #6c757d;
+  font-style: italic;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .applications-section {
+    padding: 16px;
+  }
+  
+  .application-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .application-details {
+    font-size: 0.8rem;
+  }
+  
+  .application-actions {
+    justify-content: stretch;
+  }
+  
+  .application-actions button {
+    flex: 1;
+  }
+}
+

@@ -4,19 +4,18 @@ from typing import List, Dict, Any, Optional
 from app.core.config import settings
 
 class LLMClient:
-    """Клиент для работы с LLM моделями SciBox (OpenAI-compatible API)."""
+    """Клиент для работы с LLM моделями."""
     
     def __init__(self):
         """Инициализирует клиент с API ключом и базовым URL."""
-        self.api_key = settings.SCIBOX_API_KEY
+        self.api_key = settings.GROQ_API_KEY
         self.base_url = settings.SCIBOX_API_BASE
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        # Отключаем проверку SSL для внутренних сетей
         self.timeout = httpx.Timeout(60.0, connect=10.0)
-        self.verify_ssl = False  # Для приватных сетей SciBox
+        self.verify_ssl = True
 
     async def generate(
         self, 
@@ -63,7 +62,7 @@ class LLMClient:
                 data = response.json()
                 return data["choices"][0]["message"]["content"]
             except httpx.ConnectError as e:
-                error_msg = f"Не удается подключиться к SciBox API. Проверьте интернет соединение. URL: {self.base_url}. Ошибка: {e}"
+                error_msg = f"Не удается подключиться к Groq API. Проверьте интернет соединение. URL: {self.base_url}. Ошибка: {e}"
                 print(f"❌ {error_msg}")
                 raise Exception(error_msg)
             except httpx.HTTPStatusError as e:
@@ -87,9 +86,6 @@ class LLMClient:
     ) -> Dict[str, Any]:
         """Генерирует JSON ответ от LLM.
         
-        Обертка для гарантии получения dict.
-        Если json_mode не поддерживается провайдером, парсим строку вручную.
-        
         Args:
             model: Название модели
             messages: Список сообщений
@@ -98,7 +94,6 @@ class LLMClient:
         Returns:
             Dict[str, Any]: Спарсенный JSON ответ
         """
-        # Добавляем инструкцию для получения JSON, если её ещё нет
         if messages and "json" not in messages[-1].get("content", "").lower():
              messages[-1]["content"] += "\n\nPlease respond with valid JSON."
 
@@ -106,14 +101,11 @@ class LLMClient:
         
         print(f"📝 Получен ответ от LLM (первые 500 символов): {content[:500]}")
         
-        # Очистка от тегов <think> и других артефактов
         if "<think>" in content:
-            # Удаляем все между <think> и </think>
             import re
             content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
             print(f"🧹 Удалены теги <think>, новая длина: {len(content)}")
         
-        # Базовая очистка markdown блоков кода, если модель выводит ```json ... ```
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
@@ -123,7 +115,6 @@ class LLMClient:
             parsed = json.loads(content)
             print(f"✅ JSON успешно распарсен, ключи: {list(parsed.keys()) if isinstance(parsed, dict) else 'not a dict'}")
             
-            # Если LLM вернул JSON с ключом 'content', извлекаем его
             if isinstance(parsed, dict) and 'content' in parsed and isinstance(parsed['content'], str):
                 print(f"🔄 Обнаружен вложенный JSON в поле 'content', извлекаем...")
                 try:
@@ -134,7 +125,6 @@ class LLMClient:
             
             return parsed
         except json.JSONDecodeError as e:
-            # Здесь можно добавить логику повторных попыток
             print(f"❌ Не удалось распарсить JSON: {e}")
             print(f"📄 Полный контент: {content}")
             raise ValueError("Модель не вернула корректный JSON")

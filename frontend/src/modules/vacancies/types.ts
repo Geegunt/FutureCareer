@@ -15,6 +15,9 @@ export type Application = {
   vacancy_id: string
   ml_score: number | null
   status: 'pending' | 'survey_completed' | 'algo_test_completed' | 'under_review' | 'accepted' | 'rejected' | 'final_verdict'
+  started_at: string | null
+  completed_at: string | null
+  time_limit_minutes: number
   created_at: string
   updated_at: string
   vacancy?: Vacancy | null  // Информация о вакансии

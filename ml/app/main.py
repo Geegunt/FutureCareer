@@ -7,7 +7,6 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
-# CORS (Allow all for internal/dev usage)
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
@@ -21,4 +20,9 @@ app.include_router(api.router, prefix=settings.API_V1_STR)
 
 @app.get("/health")
 async def health_check():
+    """Health check endpoint.
+    
+    Returns:
+        dict: Service status.
+    """
     return {"status": "ok", "service": "ml"}

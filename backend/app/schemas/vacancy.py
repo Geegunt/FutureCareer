@@ -50,6 +50,9 @@ class ApplicationRead(BaseModel):
     vacancy_id: uuid.UUID
     ml_score: float | None
     status: str
+    started_at: datetime | None
+    completed_at: datetime | None
+    time_limit_minutes: int
     created_at: datetime
     updated_at: datetime
     vacancy: VacancyRead | None = None  # Информация о вакансии

@@ -1,9 +1,11 @@
 """Docker Executor - Выполнение кода в Docker контейнерах"""
 
 import asyncio
+import base64
 import os
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import docker
@@ -35,6 +37,20 @@ class DockerExecutor:
 
     def __init__(self):
         self.client = docker.from_env()
+        self._thread_pool = ThreadPoolExecutor(max_workers=4)
+
+    async def _exec_in_container(self, container, command: str, timeout: int) -> tuple[int, str, str]:
+        """Выполнить команду внутри контейнера с таймаутом."""
+
+        def _run():
+            res = container.exec_run(command, demux=True)
+            exit_code = int(res.exit_code) if hasattr(res, 'exit_code') else int(res[0])
+            stdout_b, stderr_b = (res.output if hasattr(res, 'output') else res[1])
+            stdout = (stdout_b or b'').decode('utf-8', errors='replace')
+            stderr = (stderr_b or b'').decode('utf-8', errors='replace')
+            return exit_code, stdout, stderr
+
+        return await asyncio.wait_for(asyncio.to_thread(_run), timeout=timeout)
 
     def _detect_language_from_file(self, filepath: str) -> str | None:
         """Определить язык по расширению файла"""
@@ -68,19 +84,31 @@ class DockerExecutor:
         exit_code = 0
 
         # Создаем временную директорию
-        with tempfile.TemporaryDirectory() as tmpdir:
+        # Используем /app/tmp внутри executor контейнера для совместимости с Docker-in-Docker
+        tmp_base = '/app/tmp'
+        os.makedirs(tmp_base, exist_ok=True)
+        # Генерируем уникальное имя для volume
+        import uuid
+        volume_name = f"executor_run_{uuid.uuid4().hex[:12]}"
+        tmpdir = os.path.join(tmp_base, volume_name)
+        os.makedirs(tmpdir, exist_ok=True)
+        try:
             # Записываем файлы
+            print(f"📁 Received files: {list(files.keys())}")
             for filepath, content in files.items():
                 full_path = os.path.join(tmpdir, filepath)
+                print(f"📝 Writing file: {filepath} -> {full_path}")
                 os.makedirs(os.path.dirname(full_path), exist_ok=True)
                 with open(full_path, 'w', encoding='utf-8') as f:
                     f.write(content)
+                print(f"✅ File written: {full_path} (exists: {os.path.exists(full_path)})")
 
             # Определяем язык по расширению файла (приоритет над переданным языком)
             detected_language = None
             main_file_path = None
             
             # Находим главный файл и определяем язык
+            # Приоритет: файлы с расширением языка программирования
             for filepath in files.keys():
                 file_lang = self._detect_language_from_file(filepath)
                 if file_lang:
@@ -91,17 +119,27 @@ class DockerExecutor:
             # Если не определили по расширению, используем переданный язык
             if not detected_language:
                 detected_language = language
-                # Находим главный файл по конфигу
-                config = self.LANGUAGE_CONFIG.get(detected_language, {})
-                main_file = config.get('main_file', 'main.py')
+            
+            # Если не нашли главный файл, ищем любой файл с нужным расширением
+            if not main_file_path:
+                ext_map = {
+                    'python': '.py',
+                    'typescript': '.ts',
+                    'go': '.go',
+                    'java': '.java',
+                }
+                target_ext = ext_map.get(detected_language, '.py')
                 for filepath in files.keys():
-                    if main_file in filepath or filepath.endswith(main_file):
+                    if filepath.endswith(target_ext):
                         main_file_path = filepath
                         break
-                if not main_file_path:
-                    main_file_path = list(files.keys())[0]
-            elif not main_file_path:
+            
+            # Если всё ещё не нашли, берём первый файл
+            if not main_file_path:
                 main_file_path = list(files.keys())[0]
+            
+            print(f"🔍 Detected language: {detected_language}")
+            print(f"📄 Main file path: {main_file_path}")
 
             # Проверяем, поддерживается ли язык
             if detected_language not in self.LANGUAGE_CONFIG:
@@ -127,28 +165,49 @@ class DockerExecutor:
             else:
                 # Python
                 command = f'python /workspace/{main_file_path}'
+            
+            print(f"🐳 Docker command: {command}")
+            print(f"📂 tmpdir: {tmpdir}")
+            print(f"📂 tmpdir is absolute: {os.path.isabs(tmpdir)}")
+            print(f"📂 tmpdir exists: {os.path.exists(tmpdir)}")
+            print(f"📂 Files in tmpdir: {os.listdir(tmpdir)}")
+            for f in os.listdir(tmpdir):
+                full = os.path.join(tmpdir, f)
+                print(f"   - {f}: size={os.path.getsize(full)} bytes")
 
             runner_command = None
-            if test_cases:
-                runner_command = self._prepare_runner(language, main_file_path, tmpdir, timeout)
 
             if not test_cases:
                 # Запускаем контейнер напрямую только если нет набора тестов.
                 container = None
                 try:
                     use_network = language == 'typescript'
-                    container = self.client.containers.run(
+                    # Создаем контейнер без запуска
+                    container = self.client.containers.create(
                         image=config['image'],
                         command=command,
-                        volumes={tmpdir: {'bind': '/workspace', 'mode': 'rw'}},
                         mem_limit='512m',
                         cpu_period=100000,
                         cpu_quota=50000,
                         network_disabled=not use_network,
-                        detach=True,
                         working_dir='/workspace',
                         environment={'NPM_CONFIG_CACHE': '/tmp/.npm'} if use_network else None,
                     )
+                    
+                    # Копируем файлы в контейнер
+                    import tarfile
+                    import io
+                    tar_stream = io.BytesIO()
+                    with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+                        for filename in os.listdir(tmpdir):
+                            filepath = os.path.join(tmpdir, filename)
+                            if os.path.isfile(filepath):
+                                tar.add(filepath, arcname=filename)
+                    tar_stream.seek(0)
+                    container.put_archive('/workspace', tar_stream)
+                    
+                    # Запускаем контейнер
+                    container.start()
                     try:
                         container.wait(timeout=timeout)
                     except Exception as wait_exc:  # noqa: BLE001
@@ -181,77 +240,124 @@ class DockerExecutor:
                     except Exception:  # noqa: BLE001
                         pass
 
-            # Если есть тесты, запускаем код на каждом тесте
+            # Если есть тесты, выполняем их в ОДНОМ контейнере (вместо контейнера на каждый тест)
             test_results = []
             if test_cases:
+                container = None
                 first_error_output = ''
-                for test_idx, test_case in enumerate(test_cases):
-                    # test_case может быть dict (если пришел из JSON напрямую) или Pydantic объектом
-                    if isinstance(test_case, dict):
-                        test_input = test_case.get('input', '')
-                        expected_output = test_case.get('output', '').strip()
-                    else:
-                        # Pydantic объект - обращаемся к атрибутам напрямую
-                        test_input = test_case.input
-                        expected_output = test_case.output.strip()
-                    
-                    # Пустые входные данные - это валидный случай (например, задача без ввода)
-                    # Продолжаем выполнение
-                    
-                    # Запускаем код с входными данными
-                    test_start_time = time.time()
-                    test_result = await self._run_test(
-                        language=language,
-                        main_file_path=main_file_path,
-                        tmpdir=tmpdir,
-                        test_input=test_input,
-                        timeout=timeout,
-                        runner_command=runner_command,
+                try:
+                    use_network = language == 'typescript'
+                    container = self.client.containers.create(
+                        image=config['image'],
+                        command='/bin/sh -c "sleep 3600"',
+                        mem_limit='512m',
+                        cpu_period=100000,
+                        cpu_quota=50000,
+                        network_disabled=not use_network,
+                        working_dir='/workspace',
+                        environment={'NPM_CONFIG_CACHE': '/tmp/.npm'} if use_network else None,
                     )
-                    test_duration_ms = int((time.time() - test_start_time) * 1000)
-                    
-                    # Сравниваем выводы (expected_output уже обрезан выше)
-                    actual_output = test_result['stdout'].strip()
-                    exit_code = test_result.get('exit_code', 0)
-                    
-                    # Тест считается пройденным только если:
-                    # 1. Код завершился успешно (exit_code == 0)
-                    # 2. Вывод совпадает с ожидаемым
-                    passed = (exit_code == 0) and (actual_output == expected_output)
-                    
-                    test_results.append({
-                        'test_index': test_idx + 1,
-                        'input': test_input,
-                        'expected_output': expected_output,
-                        'actual_output': actual_output,
-                        'passed': passed,
-                        'exit_code': exit_code,
-                        'duration_ms': test_duration_ms,
-                    })
-                    
-                    if test_result.get('stderr'):
-                        error_text = test_result['stderr'].strip()
-                        if error_text:
+                    container.start()
+
+                    import tarfile
+                    import io
+                    tar_stream = io.BytesIO()
+                    with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+                        for filename in os.listdir(tmpdir):
+                            filepath = os.path.join(tmpdir, filename)
+                            if os.path.isfile(filepath):
+                                tar.add(filepath, arcname=filename)
+                    tar_stream.seek(0)
+                    container.put_archive('/workspace', tar_stream)
+
+                    # Подготовка (компиляция) один раз
+                    if language == 'typescript':
+                        await self._exec_in_container(
+                            container,
+                            '/bin/sh -lc "cd /workspace && npx -y tsc --target ES2020 --module commonjs --esModuleInterop --skipLibCheck *.ts"',
+                            timeout=timeout,
+                        )
+                        runner_command = f"node {main_file_path.replace('.ts', '.js')}"
+                    elif language == 'java':
+                        await self._exec_in_container(
+                            container,
+                            f'/bin/sh -lc "cd /workspace && javac {main_file_path}"',
+                            timeout=timeout,
+                        )
+                        class_name = os.path.splitext(os.path.basename(main_file_path))[0]
+                        runner_command = f"java {class_name}"
+                    elif language == 'go':
+                        await self._exec_in_container(
+                            container,
+                            f'/bin/sh -lc "cd /workspace && go build -o main_bin {main_file_path}"',
+                            timeout=timeout,
+                        )
+                        runner_command = "./main_bin"
+                    else:
+                        runner_command = f"python {main_file_path}"
+
+                    for test_idx, test_case in enumerate(test_cases):
+                        if isinstance(test_case, dict):
+                            test_input = test_case.get('input', '')
+                            expected_output = test_case.get('output', '').strip()
+                        else:
+                            test_input = test_case.input
+                            expected_output = test_case.output.strip()
+
+                        test_start_time = time.time()
+                        b64 = base64.b64encode((test_input or '').encode('utf-8')).decode('ascii')
+                        cmd = f'/bin/sh -lc "cd /workspace && echo {b64} | base64 -d | {runner_command}"'
+                        try:
+                            t_exit, t_out, t_err = await self._exec_in_container(container, cmd, timeout=timeout)
+                        except TimeoutError:
+                            t_exit, t_out, t_err = -1, '', f'Execution timeout after {timeout} seconds'
+                        except asyncio.TimeoutError:
+                            t_exit, t_out, t_err = -1, '', f'Execution timeout after {timeout} seconds'
+
+                        test_duration_ms = int((time.time() - test_start_time) * 1000)
+                        actual_output = (t_out or '').strip()
+                        passed = (t_exit == 0) and (actual_output == expected_output)
+
+                        actual_output_with_error = actual_output
+                        if t_err and str(t_err).strip():
                             if not first_error_output:
-                                first_error_output = error_text
-                            actual_output_with_error = f"{actual_output}\nОшибка: {error_text}" if actual_output else f"Ошибка: {error_text}"
-                            test_results[-1]['actual_output'] = actual_output_with_error
-                
-                # Формируем итоговый вывод с результатами тестов
-                passed_count = sum(1 for tr in test_results if tr['passed'])
-                total_count = len(test_results)
-                all_passed = passed_count == total_count
-                verdict = 'ACCEPTED' if all_passed else 'WRONG ANSWER'
-                
-                stdout_lines = [f'Вердикт: {verdict}', f'Пройдено тестов: {passed_count}/{total_count}', '']
-                for tr in test_results:
-                    status = '✅' if tr['passed'] else '❌'
-                    stdout_lines.append(f'{status} Тест {tr["test_index"]}: {tr["actual_output"]} (ожидалось: {tr["expected_output"]})')
-                
-                stdout = '\n'.join(stdout_lines)
-                if not all_passed and first_error_output:
-                    stderr = first_error_output
-                exit_code = 0 if all_passed else 1
+                                first_error_output = str(t_err).strip()
+                            actual_output_with_error = (
+                                f"{actual_output}\nОшибка: {str(t_err).strip()}" if actual_output else f"Ошибка: {str(t_err).strip()}"
+                            )
+
+                        test_results.append({
+                            'test_index': test_idx + 1,
+                            'input': test_input,
+                            'expected_output': expected_output,
+                            'actual_output': actual_output_with_error,
+                            'passed': passed,
+                            'exit_code': t_exit,
+                            'duration_ms': test_duration_ms,
+                        })
+
+                    passed_count = sum(1 for tr in test_results if tr['passed'])
+                    total_count = len(test_results)
+                    all_passed = passed_count == total_count
+                    verdict = 'ACCEPTED' if all_passed else 'WRONG ANSWER'
+
+                    stdout_lines = [f'Вердикт: {verdict}', f'Пройдено тестов: {passed_count}/{total_count}', '']
+                    for tr in test_results:
+                        status_icon = '✅' if tr['passed'] else '❌'
+                        stdout_lines.append(
+                            f'{status_icon} Тест {tr["test_index"]}: {tr["actual_output"]} (ожидалось: {tr["expected_output"]})'
+                        )
+
+                    stdout = '\n'.join(stdout_lines)
+                    if not all_passed and first_error_output:
+                        stderr = first_error_output
+                    exit_code = 0 if all_passed else 1
+                finally:
+                    try:
+                        if container:
+                            container.remove(force=True)
+                    except Exception:  # noqa: BLE001
+                        pass
             else:
                 verdict = None
                 test_results = None
@@ -264,6 +370,11 @@ class DockerExecutor:
                 'test_results': test_results,
                 'verdict': verdict,
             }
+        finally:
+            # Cleanup temporary directory
+            import shutil
+            if os.path.exists(tmpdir):
+                shutil.rmtree(tmpdir, ignore_errors=True)
 
     async def _run_test(
         self,
@@ -293,38 +404,53 @@ class DockerExecutor:
             }
         
         # Определяем команду запуска с перенаправлением из файла
-        # Используем абсолютный путь к файлу для надежности
+        # working_dir = /workspace, используем абсолютные пути
         if runner_command:
-            command = f'/bin/sh -c "cd /workspace && cat /workspace/test_input.txt | {runner_command}"'
+            command = f'/bin/sh -c "cd /workspace && cat test_input.txt | {runner_command}"'
         else:
             if language == 'typescript':
                 js_file = main_file_path.replace('.ts', '.js')
-                command = f'/bin/sh -c "cd /workspace && npx -y tsc --target ES2020 --module commonjs --esModuleInterop --skipLibCheck *.ts 2>&1 && cat /workspace/test_input.txt | node {js_file}"'
+                command = f'/bin/sh -c "cd /workspace && npx -y tsc --target ES2020 --module commonjs --esModuleInterop --skipLibCheck *.ts 2>&1 && cat test_input.txt | node {js_file}"'
             elif language == 'java':
                 class_name = os.path.splitext(os.path.basename(main_file_path))[0]
-                command = f'/bin/sh -c "cd /workspace && cat /workspace/test_input.txt | java {class_name}"'
+                command = f'/bin/sh -c "cd /workspace && cat test_input.txt | java {class_name}"'
             elif language == 'go':
-                command = f'/bin/sh -c "cd /workspace && cat /workspace/test_input.txt | go run {main_file_path}"'
+                command = f'/bin/sh -c "cd /workspace && cat test_input.txt | go run {main_file_path}"'
             else:
-                # Python
-                command = f'/bin/sh -c "cd /workspace && cat /workspace/test_input.txt | python {main_file_path}"'
+                # Python  
+                command = f'sh -c "cd /workspace && cat test_input.txt | python {main_file_path}"'
             
+        print(f"🐳 Test command: {command}")
+        
         container = None
         try:
             use_network = language == 'typescript'
-            container = self.client.containers.run(
+            # Создаем контейнер без запуска
+            container = self.client.containers.create(
                 image=config['image'],
                 command=command,
-                volumes={tmpdir: {'bind': '/workspace', 'mode': 'rw'}},
                 mem_limit='512m',
                 cpu_period=100000,
                 cpu_quota=50000,
                 network_disabled=not use_network,
-                detach=True,
                 working_dir='/workspace',
                 environment={'NPM_CONFIG_CACHE': '/tmp/.npm'} if use_network else None,
             )
             
+            # Копируем файлы в контейнер
+            import tarfile
+            import io
+            tar_stream = io.BytesIO()
+            with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+                for filename in os.listdir(tmpdir):
+                    filepath = os.path.join(tmpdir, filename)
+                    if os.path.isfile(filepath):
+                        tar.add(filepath, arcname=filename)
+            tar_stream.seek(0)
+            container.put_archive('/workspace', tar_stream)
+            
+            # Запускаем контейнер
+            container.start()
             container.wait(timeout=timeout)
             
             stdout_bytes = container.logs(stdout=True, stderr=False)
@@ -374,18 +500,32 @@ class DockerExecutor:
         def run_compile(command: str):
             nonlocal compile_container
             try:
-                compile_container = self.client.containers.run(
+                # Создаем контейнер без запуска
+                compile_container = self.client.containers.create(
                     image=config['image'],
                     command=command,
-                    volumes={tmpdir: {'bind': '/workspace', 'mode': 'rw'}},
                     mem_limit='512m',
                     cpu_period=100000,
                     cpu_quota=50000,
                     network_disabled=not use_network,
-                    detach=True,
                     working_dir='/workspace',
                     environment={'NPM_CONFIG_CACHE': '/tmp/.npm'} if use_network else None,
                 )
+                
+                # Копируем файлы в контейнер
+                import tarfile
+                import io
+                tar_stream = io.BytesIO()
+                with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+                    for filename in os.listdir(tmpdir):
+                        filepath = os.path.join(tmpdir, filename)
+                        if os.path.isfile(filepath):
+                            tar.add(filepath, arcname=filename)
+                tar_stream.seek(0)
+                compile_container.put_archive('/workspace', tar_stream)
+                
+                # Запускаем контейнер
+                compile_container.start()
                 compile_container.wait(timeout=timeout)
             except Exception as exc:  # noqa: BLE001
                 logs = ''

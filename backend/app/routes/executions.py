@@ -38,6 +38,7 @@ async def create_execution(
     current_user: User = Depends(get_current_user),
 ):
     """Создать задачу на выполнение кода"""
+    logger.info(f"=== CREATE EXECUTION START === is_submit={request.is_submit}, task_id={request.task_id}")
     # Создаем запись в БД
     execution_language = request.language.lower()
     if request.vacancy_id:
@@ -67,6 +68,32 @@ async def create_execution(
     session.add(execution)
     await session.flush()
 
+    # Получаем тесты из задачи, если это Submit
+    test_cases_to_send = request.test_cases
+    logger.info(f"is_submit={request.is_submit}, task_id={request.task_id}")
+    if request.is_submit and request.task_id:
+        from ..models import Task
+        import json
+        task = await session.get(Task, request.task_id)
+        logger.info(f"Task found: {task is not None}")
+        if task:
+            # Для Submit используем все тесты (открытые + скрытые)
+            all_tests = []
+            if task.open_tests:
+                # open_tests хранится как JSON строка, нужно распарсить
+                open_tests_list = json.loads(task.open_tests) if isinstance(task.open_tests, str) else task.open_tests
+                all_tests.extend(open_tests_list)
+                logger.info(f"Added {len(open_tests_list)} open tests")
+            if task.hidden_tests:
+                # hidden_tests хранится как JSON строка, нужно распарсить
+                hidden_tests_list = json.loads(task.hidden_tests) if isinstance(task.hidden_tests, str) else task.hidden_tests
+                all_tests.extend(hidden_tests_list)
+                logger.info(f"Added {len(hidden_tests_list)} hidden tests")
+            if all_tests:
+                from ..schemas.execution import TestCase
+                test_cases_to_send = [TestCase(input=t['input'], output=t['output']) for t in all_tests]
+                logger.info(f"Total test_cases_to_send: {len(test_cases_to_send)}")
+
     # Отправляем задачу в executor service
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -76,10 +103,13 @@ async def create_execution(
                 'files': request.files,
                 'timeout': request.timeout,
             }
-            if request.test_cases:
+            if test_cases_to_send:
                 executor_request['test_cases'] = [
-                    {'input': tc.input, 'output': tc.output} for tc in request.test_cases
+                    {'input': tc.input, 'output': tc.output} for tc in test_cases_to_send
                 ]
+                logger.info(f"Sending {len(test_cases_to_send)} test cases to executor for execution {execution.id}")
+            else:
+                logger.info(f"No test cases to send for execution {execution.id}")
             
             response = await client.post(
                 f'{settings.executor_service_url}/execute',

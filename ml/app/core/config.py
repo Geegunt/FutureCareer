@@ -1,17 +1,16 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    """Настройки приложения"""
+    
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "VibeCode ML Service"
     
-    # LLM Configuration
-    # SciBox API - новый эндпоинт, доступен публично
-    SCIBOX_API_KEY: str = "sk-c7K8ClMXslvPl6SRw2P9Ig"
-    SCIBOX_API_BASE: str = "https://llm.t1v.scibox.tech/v1"
+    GROQ_API_KEY: str = ""
+    SCIBOX_API_BASE: str = "https://api.groq.com/openai/v1"
     
-    # Model Names (для SciBox API)
-    MODEL_AWQ: str = "qwen3-32b-awq" # General purpose
-    MODEL_CODER: str = "qwen3-coder-30b-a3b-instruct-fp8" # Coding specialist
+    MODEL_AWQ: str = "llama-3.3-70b-versatile"
+    MODEL_CODER: str = "llama-3.3-70b-versatile"
     
     class Config:
         case_sensitive = True

@@ -1,15 +1,3 @@
-"""
-API эндпоинты для ML микросервиса VibeCode Jam.
-
-Этот модуль содержит все REST API эндпоинты для:
-- Генерации задач
-- Оценки решений
-- Адаптивной сложности
-- Коммуникационных навыков
-- Подсчёта баллов
-- Анти-чит проверки
-"""
-
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import (
     TaskGenerationRequest, Task,
@@ -31,13 +19,20 @@ from pydantic import BaseModel
 router = APIRouter()
 
 class AntiCheatRequest(BaseModel):
-    """Запрос на проверку кода на плагиат."""
+    """Запрос на проверку кода."""
     code: str
     problem_description: str
 
 @router.post("/generate-task", response_model=Task)
 async def generate_task(request: TaskGenerationRequest):
-    """Генерирует новую задачу заданного уровня сложности."""
+    """Генерирует новую задачу.
+    
+    Args:
+        request: Запрос на генерацию задачи
+        
+    Returns:
+        Task: Сгенерированная задача
+    """
     try:
         task = await task_generator.generate_task(request.difficulty, language=request.language)
         return task
@@ -46,7 +41,14 @@ async def generate_task(request: TaskGenerationRequest):
 
 @router.post("/evaluate", response_model=EvaluationResult)
 async def evaluate_solution(request: EvaluationRequest):
-    """Оценивает решение кода: запускает тесты и анализирует качество."""
+    """Оценивает решение кода.
+    
+    Args:
+        request: Запрос на оценку
+        
+    Returns:
+        EvaluationResult: Результат оценки
+    """
     try:
         result = await evaluator.evaluate_submission(request)
         return result
@@ -55,7 +57,14 @@ async def evaluate_solution(request: EvaluationRequest):
 
 @router.post("/adaptive-engine", response_model=AdaptiveLevelResponse)
 async def get_next_level(request: AdaptiveLevelRequest):
-    """Определяет следующий уровень сложности на основе результатов."""
+    """Определяет следующий уровень сложности.
+    
+    Args:
+        request: Запрос с результатами
+        
+    Returns:
+        AdaptiveLevelResponse: Следующий уровень
+    """
     try:
         result = adaptive_engine.determine_next_level(request)
         return result
@@ -64,7 +73,14 @@ async def get_next_level(request: AdaptiveLevelRequest):
 
 @router.post("/communication/evaluate", response_model=CommunicationResponse)
 async def evaluate_communication(request: CommunicationRequest):
-    """Оценивает объяснение решения кандидатом."""
+    """Оценивает объяснение решения.
+    
+    Args:
+        request: Запрос на оценку коммуникации
+        
+    Returns:
+        CommunicationResponse: Результат оценки
+    """
     try:
         result = await communication_service.evaluate_explanation(
             request.problem_description,
@@ -80,7 +96,14 @@ async def evaluate_communication(request: CommunicationRequest):
 
 @router.post("/communication/follow-up")
 async def get_follow_up(request: FollowUpRequest):
-    """Генерирует дополнительный вопрос для интервью."""
+    """Генерирует дополнительный вопрос.
+    
+    Args:
+        request: Запрос на генерацию вопроса
+        
+    Returns:
+        dict: Дополнительный вопрос
+    """
     try:
         question = await communication_service.generate_followup_question(
             request.problem_description,
@@ -92,7 +115,14 @@ async def get_follow_up(request: FollowUpRequest):
 
 @router.post("/score", response_model=ScoringResponse)
 async def calculate_score(request: ScoringRequest):
-    """Рассчитывает итоговый взвешенный балл за интервью."""
+    """Рассчитывает итоговый балл.
+    
+    Args:
+        request: Запрос на расчет балла
+        
+    Returns:
+        ScoringResponse: Итоговый балл
+    """
     try:
         final_score = scoring_service.calculate_final_score(
             difficulty=request.difficulty,
@@ -109,7 +139,14 @@ async def calculate_score(request: ScoringRequest):
 
 @router.post("/anti-cheat/check")
 async def check_cheat(request: AntiCheatRequest):
-    """Проверяет код на плагиат и AI-генерацию."""
+    """Проверяет код на плагиат.
+    
+    Args:
+        request: Запрос на проверку
+        
+    Returns:
+        dict: Результат проверки
+    """
     try:
         result = await anti_cheat_service.check_submission(request.code, request.problem_description)
         return result
@@ -118,7 +155,14 @@ async def check_cheat(request: AntiCheatRequest):
 
 @router.post("/generate-task-mock", response_model=Task)
 async def generate_task_mock(request: TaskGenerationRequest):
-    """Генерирует mock задачу для тестирования без LLM."""
+    """Генерирует mock задачу.
+    
+    Args:
+        request: Запрос на генерацию
+        
+    Returns:
+        Task: Mock задача
+    """
     base_examples = [
         {"input": "5\n1 3 7 2 9", "output": "9"},
         {"input": "3\n-1 -5 -2", "output": "-1"},
@@ -283,7 +327,14 @@ console.log(maxVal.toString());
 
 @router.post("/hints/generate", response_model=GenerateHintsResponse)
 async def generate_hints(request: GenerateHintsRequest):
-    """Генерирует три уровня подсказок для задачи."""
+    """Генерирует подсказки для задачи.
+    
+    Args:
+        request: Запрос на генерацию подсказок
+        
+    Returns:
+        GenerateHintsResponse: Подсказки
+    """
     try:
         hints = await hint_service.generate_hints(
             task_description=request.task_description,
